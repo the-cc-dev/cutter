@@ -335,7 +335,8 @@ HEADERS  += \
     common/CutterSeekable.h \
     common/RefreshDeferrer.h \
     dialogs/WelcomeDialog.h \
-    RunScriptTask.h
+    RunScriptTask.h \
+    common/Json.h
 
 FORMS    += \
     dialogs/AboutDialog.ui \
