@@ -226,8 +226,8 @@ SOURCES += \
     common/CutterSeekable.cpp \
     common/RefreshDeferrer.cpp \
     dialogs/WelcomeDialog.cpp \
-    RunScriptTask.cpp
-
+    RunScriptTask.cpp \
+    dialogs/EditMethodDialog.cpp
 
 HEADERS  += \
     Cutter.h \
@@ -336,7 +336,8 @@ HEADERS  += \
     common/RefreshDeferrer.h \
     dialogs/WelcomeDialog.h \
     RunScriptTask.h \
-    common/Json.h
+    common/Json.h \
+    dialogs/EditMethodDialog.h
 
 FORMS    += \
     dialogs/AboutDialog.ui \
@@ -395,7 +396,8 @@ FORMS    += \
     widgets/CutterTreeView.ui \
     widgets/ComboQuickFilterView.ui \
     dialogs/HexdumpRangeDialog.ui \
-    dialogs/WelcomeDialog.ui
+    dialogs/WelcomeDialog.ui \
+    dialogs/EditMethodDialog.ui
 
 RESOURCES += \
     resources.qrc \
