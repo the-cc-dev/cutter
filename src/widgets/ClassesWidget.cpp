@@ -9,14 +9,44 @@
 
 #include <QMenu>
 
-ClassesModel::ClassesModel(QList<ClassDescription> *classes, QObject *parent)
-    : QAbstractItemModel(parent),
-      classes(classes)
+
+QVariant ClassesModel::headerData(int section, Qt::Orientation, int role) const
 {
+    switch (role) {
+    case Qt::DisplayRole:
+        switch (section) {
+        case NAME:
+            return tr("Name");
+        case TYPE:
+            return tr("Type");
+        case OFFSET:
+            return tr("Offset");
+        case VTABLE:
+            return tr("VTable");
+        default:
+            return QVariant();
+        }
+    default:
+        return QVariant();
+    }
 }
 
 
-QModelIndex ClassesModel::index(int row, int column, const QModelIndex &parent) const
+
+BinClassesModel::BinClassesModel(QObject *parent)
+    : ClassesModel(parent)
+{
+}
+
+void BinClassesModel::setClasses(const QList<BinClassDescription> &classes)
+{
+    beginResetModel();
+    this->classes = classes;
+    endResetModel();
+}
+
+
+QModelIndex BinClassesModel::index(int row, int column, const QModelIndex &parent) const
 {
     if (!parent.isValid())
         return createIndex(row, column, (quintptr)0); // root function nodes have id = 0
@@ -24,7 +54,7 @@ QModelIndex ClassesModel::index(int row, int column, const QModelIndex &parent) 
     return createIndex(row, column, (quintptr)parent.row() + 1); // sub-nodes have id = class index + 1
 }
 
-QModelIndex ClassesModel::parent(const QModelIndex &index) const
+QModelIndex BinClassesModel::parent(const QModelIndex &index) const
 {
     if (!index.isValid() || index.column() != 0)
         return QModelIndex();
@@ -35,39 +65,39 @@ QModelIndex ClassesModel::parent(const QModelIndex &index) const
         return this->index((int)(index.internalId() - 1), 0);
 }
 
-int ClassesModel::rowCount(const QModelIndex &parent) const
+int BinClassesModel::rowCount(const QModelIndex &parent) const
 {
     if (!parent.isValid()) { // root
-        return classes->count();
+        return classes.count();
     }
 
     if (parent.internalId() == 0) { // methods/fields
-        const ClassDescription *cls = &classes->at(parent.row());
+        const BinClassDescription *cls = &classes.at(parent.row());
         return cls->baseClasses.length() + cls->methods.length() + cls->fields.length();
     }
 
     return 0; // below methods/fields
 }
 
-int ClassesModel::columnCount(const QModelIndex &) const
+int BinClassesModel::columnCount(const QModelIndex &) const
 {
     return Columns::COUNT;
 }
 
-QVariant ClassesModel::data(const QModelIndex &index, int role) const
+QVariant BinClassesModel::data(const QModelIndex &index, int role) const
 {
-    const ClassDescription *cls;
+    const BinClassDescription *cls;
     const ClassMethodDescription *meth = nullptr;
     const ClassFieldDescription *field = nullptr;
     const ClassBaseClassDescription *base = nullptr;
     if (index.internalId() == 0) { // class row
-        if (index.row() >= classes->count()) {
+        if (index.row() >= classes.count()) {
             return QVariant();
         }
 
-        cls = &classes->at(index.row());
+        cls = &classes.at(index.row());
     } else { // method/field/base row
-        cls = &classes->at(static_cast<int>(index.internalId() - 1));
+        cls = &classes.at(static_cast<int>(index.internalId() - 1));
 
         if (index.row() >= cls->baseClasses.length() + cls->methods.length() + cls->fields.length()) {
             return QVariant();
@@ -93,14 +123,14 @@ QVariant ClassesModel::data(const QModelIndex &index, int role) const
             case OFFSET:
                 return meth->addr == RVA_INVALID ? QString() : RAddressString(meth->addr);
             case VTABLE:
-                return meth->vtableIndex < 0 ? QString() : QString("+%1").arg(meth->vtableIndex);
+                return meth->vtableOffset < 0 ? QString() : QString("+%1").arg(meth->vtableOffset);
             default:
                 return QVariant();
             }
         case OffsetRole:
             return QVariant::fromValue(meth->addr);
         case VTableOffsetRole:
-            return QVariant::fromValue(index.parent().data(VTableOffsetRole).toULongLong() + meth->vtableIndex);
+            return QVariant::fromValue(index.parent().data(VTableOffsetRole).toULongLong() + meth->vtableOffset);
         case NameRole:
             return meth->name;
         case TypeRole:
@@ -182,36 +212,198 @@ QVariant ClassesModel::data(const QModelIndex &index, int role) const
     }
 }
 
-QVariant ClassesModel::headerData(int section, Qt::Orientation, int role) const
+
+AnalClassesModel::AnalClassesModel(QObject *parent)
+    : ClassesModel(parent)
 {
-    switch (role) {
-    case Qt::DisplayRole:
-        switch (section) {
-        case NAME:
-            return tr("Name");
-        case TYPE:
-            return tr("Type");
-        case OFFSET:
-            return tr("Offset");
-        case VTABLE:
-            return tr("VTable");
+}
+
+void AnalClassesModel::setClasses(const QList<QString> &classes)
+{
+    beginResetModel();
+    this->classes = classes;
+    endResetModel();
+}
+
+
+QModelIndex AnalClassesModel::index(int row, int column, const QModelIndex &parent) const
+{
+    if (!parent.isValid())
+        return createIndex(row, column, (quintptr)0); // root function nodes have id = 0
+
+    return createIndex(row, column, (quintptr)parent.row() + 1); // sub-nodes have id = class index + 1
+}
+
+QModelIndex AnalClassesModel::parent(const QModelIndex &index) const
+{
+    if (!index.isValid() || index.column() != 0)
+        return QModelIndex();
+
+    if (index.internalId() == 0) // root function node
+        return QModelIndex();
+    else // sub-node
+        return this->index((int)(index.internalId() - 1), 0);
+}
+
+int AnalClassesModel::rowCount(const QModelIndex &parent) const
+{
+    if (!parent.isValid()) { // root
+        return classes.count();
+    }
+
+    if (parent.internalId() == 0) { // methods/fields
+        return 0;
+        // TODO const BinClassDescription *cls = &classes.at(parent.row());
+        // TODO return cls->baseClasses.length() + cls->methods.length() + cls->fields.length();
+    }
+
+    return 0; // below methods/fields
+}
+
+bool AnalClassesModel::hasChildren(const QModelIndex &parent) const
+{
+    return true;
+}
+
+int AnalClassesModel::columnCount(const QModelIndex &) const
+{
+    return Columns::COUNT;
+}
+
+QVariant AnalClassesModel::data(const QModelIndex &index, int role) const
+{
+    QString cls;
+    const ClassMethodDescription *meth = nullptr;
+    const ClassFieldDescription *field = nullptr;
+    const ClassBaseClassDescription *base = nullptr;
+    if (index.internalId() == 0) { // class row
+        if (index.row() >= classes.count()) {
+            return QVariant();
+        }
+
+        cls = classes.at(index.row());
+    } else { // method/field/base row
+        cls = classes.at(static_cast<int>(index.internalId() - 1));
+
+        /*if (index.row() >= cls->baseClasses.length() + cls->methods.length() + cls->fields.length()) {
+            return QVariant();
+        }
+
+        if (index.row() < cls->baseClasses.length()) {
+            base = &cls->baseClasses[index.row()];
+        } else if (index.row() - cls->baseClasses.length() < cls->methods.length()) {
+            meth = &cls->methods[index.row() - cls->baseClasses.length()];
+        } else {
+            field = &cls->fields[index.row() - cls->baseClasses.length() - cls->methods.length()];
+        }*/
+    }
+
+    if (meth) {
+        switch (role) {
+        case Qt::DisplayRole:
+            switch (index.column()) {
+            case NAME:
+                return meth->name;
+            case TYPE:
+                return tr("method");
+            case OFFSET:
+                return meth->addr == RVA_INVALID ? QString() : RAddressString(meth->addr);
+            case VTABLE:
+                return meth->vtableOffset < 0 ? QString() : QString("+%1").arg(meth->vtableOffset);
+            default:
+                return QVariant();
+            }
+        case OffsetRole:
+            return QVariant::fromValue(meth->addr);
+        case VTableOffsetRole:
+            return QVariant::fromValue(index.parent().data(VTableOffsetRole).toULongLong() + meth->vtableOffset);
+        case NameRole:
+            return meth->name;
+        case TypeRole:
+            return QVariant::fromValue(METHOD);
+        case DataRole:
+            return QVariant::fromValue(*meth);
         default:
             return QVariant();
         }
-    default:
-        return QVariant();
+    } else if (field) {
+        switch (role) {
+        case Qt::DisplayRole:
+            switch (index.column()) {
+            case NAME:
+                return field->name;
+            case TYPE:
+                return tr("field");
+            case OFFSET:
+                return field->addr == RVA_INVALID ? QString() : RAddressString(field->addr);
+            default:
+                return QVariant();
+            }
+        case OffsetRole:
+            return QVariant::fromValue(field->addr);
+        case NameRole:
+            return field->name;
+        case TypeRole:
+            return QVariant::fromValue(FIELD);
+        default:
+            return QVariant();
+        }
+    } else if (base) {
+        switch (role) {
+        case Qt::DisplayRole:
+            switch (index.column()) {
+            case NAME:
+                return base->name;
+            case TYPE:
+                return tr("base class");
+            case OFFSET:
+                return QString("+%1").arg(base->offset);
+            default:
+                return QVariant();
+            }
+        case NameRole:
+            return base->name;
+        case TypeRole:
+            return QVariant::fromValue(BASE);
+        default:
+            return QVariant();
+        }
+    }
+    else {
+        switch (role) {
+        case Qt::DisplayRole:
+            switch (index.column()) {
+            case NAME:
+                return cls;
+            case TYPE:
+                return tr("class");
+            // TODO case OFFSET:
+            // TODO     return cls->addr == RVA_INVALID ? QString() : RAddressString(cls->addr);
+            // TODO case VTABLE:
+            // TODO     return cls->vtableAddr == RVA_INVALID ? QString() : RAddressString(cls->vtableAddr);
+            default:
+                return QVariant();
+            }
+        // TODO case OffsetRole:
+        // TODO     return QVariant::fromValue(cls->addr);
+        // TODO case VTableOffsetRole:
+        // TODO     return QVariant::fromValue(cls->vtableAddr);
+        // TODO case NameRole:
+        // TODO     return cls->name;
+        case TypeRole:
+            return QVariant::fromValue(CLASS);
+        default:
+            return QVariant();
+        }
     }
 }
 
 
 
 
-
-ClassesSortFilterProxyModel::ClassesSortFilterProxyModel(ClassesModel *source_model,
-                                                         QObject *parent)
+ClassesSortFilterProxyModel::ClassesSortFilterProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
-    setSourceModel(source_model);
 }
 
 bool ClassesSortFilterProxyModel::filterAcceptsRow(int row, const QModelIndex &parent) const
@@ -253,20 +445,14 @@ ClassesWidget::ClassesWidget(MainWindow *main, QAction *action) :
 {
     ui->setupUi(this);
 
-    model = new ClassesModel(&classes, this);
-    proxy_model = new ClassesSortFilterProxyModel(model, this);
-    ui->classesTreeView->setModel(proxy_model);
+    proxy_model = new ClassesSortFilterProxyModel(this);
+    ui->classesTreeView->setModel(nullptr);
     ui->classesTreeView->sortByColumn(ClassesModel::TYPE, Qt::AscendingOrder);
     ui->classesTreeView->setContextMenuPolicy(Qt::CustomContextMenu);
 
-    ui->classSourceCombo->setCurrentIndex(2);
+    ui->classSourceCombo->setCurrentIndex(1);
 
     connect(Core(), SIGNAL(refreshAll()), this, SLOT(refreshClasses()));
-    connect(Core(), &CutterCore::flagsChanged, this, [this]() {
-        if (getSource() == Source::FLAGS) {
-            refreshClasses();
-        }
-    });
     connect(Core(), &CutterCore::classesChanged, this, [this]() {
         if (getSource() == Source::ANAL) {
             refreshClasses();
@@ -283,8 +469,6 @@ ClassesWidget::Source ClassesWidget::getSource()
     switch (ui->classSourceCombo->currentIndex()) {
     case 0:
         return Source::BIN;
-    case 1:
-        return Source::FLAGS;
     default:
         return Source::ANAL;
     }
@@ -292,19 +476,30 @@ ClassesWidget::Source ClassesWidget::getSource()
 
 void ClassesWidget::refreshClasses()
 {
-    model->beginResetModel();
     switch (getSource()) {
     case Source::BIN:
-        classes = Core()->getAllClassesFromBin();
-        break;
-    case Source::FLAGS:
-        classes = Core()->getAllClassesFromFlags();
+        if (!bin_model) {
+            proxy_model->setSourceModel(nullptr);
+            delete anal_model;
+            anal_model = nullptr;
+            bin_model = new BinClassesModel(this);
+            ui->classesTreeView->setModel(bin_model);
+            //proxy_model->setSourceModel(bin_model);
+        }
+        bin_model->setClasses(Core()->getAllClassesFromBin());
         break;
     case Source::ANAL:
-        classes = Core()->getAllClassesFromAnal();
+        if (!anal_model) {
+            proxy_model->setSourceModel(nullptr);
+            delete bin_model;
+            bin_model = nullptr;
+            anal_model = new AnalClassesModel(this);
+            ui->classesTreeView->setModel(anal_model);
+            //proxy_model->setSourceModel(anal_model);
+        }
+        anal_model->setClasses(Core()->getAllClassesFromAnal());
         break;
     }
-    model->endResetModel();
 
     qhelpers::adjustColumns(ui->classesTreeView, 3, 0);
 

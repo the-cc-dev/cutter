@@ -9,9 +9,9 @@ EditMethodDialog::EditMethodDialog(QWidget *parent) :
     setWindowFlags(windowFlags() & (~Qt::WindowContextHelpButtonHint));
 
     ui->classComboBox->clear();
-    for (auto &cls : Core()->getAllClassesFromAnal()) {
-        ui->classComboBox->addItem(cls.name, QVariant::fromValue<ClassDescription>(cls));
-    }
+    /* TODO for (auto &cls : Core()->getAllClassesFromAnal()) {
+        ui->classComboBox->addItem(cls.name, QVariant::fromValue<BinClassDescription>(cls));
+    }*/
 
     updateVirtualUI();
     validateInput();
@@ -64,7 +64,7 @@ void EditMethodDialog::setClass(const QString &className)
     }
 
     for (int i=0; i<ui->classComboBox->count(); i++) {
-        ClassDescription cls = ui->classComboBox->itemData(i).value<ClassDescription>();
+        BinClassDescription cls = ui->classComboBox->itemData(i).value<BinClassDescription>();
         if (cls.name == className) {
             ui->classComboBox->setCurrentIndex(i);
             break;
@@ -79,9 +79,9 @@ void EditMethodDialog::setMethod(const ClassMethodDescription &meth)
     ui->nameEdit->setText(meth.name);
     ui->addressEdit->setText(meth.addr != RVA_INVALID ? RAddressString(meth.addr) : nullptr);
 
-    if (meth.vtableIndex >= 0) {
+    if (meth.vtableOffset >= 0) {
         ui->virtualCheckBox->setChecked(true);
-        ui->vtableOffsetEdit->setText(QString::number(meth.vtableIndex));
+        ui->vtableOffsetEdit->setText(QString::number(meth.vtableOffset));
     } else {
         ui->virtualCheckBox->setChecked(false);
         ui->vtableOffsetEdit->setText(nullptr);
@@ -97,7 +97,7 @@ QString EditMethodDialog::getClass()
     if (index < 0) {
         return nullptr;
     }
-    return ui->classComboBox->itemData(index).value<ClassDescription>().name;
+    return ui->classComboBox->itemData(index).value<BinClassDescription>().name;
 }
 
 ClassMethodDescription EditMethodDialog::getMethod()
@@ -106,9 +106,9 @@ ClassMethodDescription EditMethodDialog::getMethod()
     ret.name = ui->nameEdit->text();
     ret.addr = Core()->num(ui->addressEdit->text());
     if (ui->virtualCheckBox->isChecked()) {
-        ret.vtableIndex = -1;
+        ret.vtableOffset = -1;
     } else {
-        ret.vtableIndex = Core()->num(ui->vtableOffsetEdit->text());
+        ret.vtableOffset = Core()->num(ui->vtableOffsetEdit->text());
     }
     return ret;
 }

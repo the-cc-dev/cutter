@@ -540,13 +540,18 @@ void CutterCore::setCurrentBits(int bits, RVA offset)
 
 void CutterCore::setClassMethod(const QString &className, const ClassMethodDescription &meth)
 {
-    cmd(QString("\"aCm %1 %2 %3 %4\"").arg(className).arg(meth.name).arg(meth.addr).arg(meth.vtableIndex));
+    RAnalMethod analMeth;
+    analMeth.name = strdup (meth.name.toUtf8().constData());
+    analMeth.addr = meth.addr;
+    analMeth.vtable_offset = meth.vtableOffset;
+    r_anal_class_method_set(core_->anal, className.toUtf8().constData(), &analMeth);
+    r_anal_class_method_fini(&analMeth);
     emit classesChanged();
 }
 
 void CutterCore::renameClassMethod(const QString &className, const QString &oldMethodName, const QString &newMethodName)
 {
-    cmd(QString("\"aCmn %1 %2 %3\"").arg(className, oldMethodName, newMethodName));
+    r_anal_class_method_rename(core_->anal, className.toUtf8().constData(), oldMethodName.toUtf8().constData(), newMethodName.toUtf8().constData());
     emit classesChanged();
 }
 
@@ -1868,16 +1873,16 @@ QList<EntrypointDescription> CutterCore::getAllEntrypoint()
     return ret;
 }
 
-QList<ClassDescription> CutterCore::getAllClassesFromBin()
+QList<BinClassDescription> CutterCore::getAllClassesFromBin()
 {
     CORE_LOCK();
-    QList<ClassDescription> ret;
+    QList<BinClassDescription> ret;
 
     QJsonArray classesArray = cmdj("icj").array();
     for (const QJsonValue &value : classesArray) {
         QJsonObject classObject = value.toObject();
 
-        ClassDescription cls;
+        BinClassDescription cls;
 
         cls.name = classObject[RJsonKey::classname].toString();
         cls.addr = classObject[RJsonKey::addr].toVariant().toULongLong();
@@ -1910,14 +1915,14 @@ QList<ClassDescription> CutterCore::getAllClassesFromBin()
     return ret;
 }
 
-QList<ClassDescription> CutterCore::getAllClassesFromFlags()
+QList<BinClassDescription> CutterCore::getAllClassesFromFlags()
 {
     static const QRegularExpression classFlagRegExp("^class\\.(.*)$");
     static const QRegularExpression methodFlagRegExp("^method\\.([^\\.]*)\\.(.*)$");
 
     CORE_LOCK();
-    QList<ClassDescription> ret;
-    QMap<QString, ClassDescription *> classesCache;
+    QList<BinClassDescription> ret;
+    QMap<QString, BinClassDescription *> classesCache;
 
     QJsonArray flagsArray = cmdj("fj@F:classes").array();
     for (const QJsonValue &value : flagsArray) {
@@ -1928,10 +1933,10 @@ QList<ClassDescription> CutterCore::getAllClassesFromFlags()
         QRegularExpressionMatch match = classFlagRegExp.match(flagName);
         if (match.hasMatch()) {
             QString className = match.captured(1);
-            ClassDescription *desc = nullptr;
+            BinClassDescription *desc = nullptr;
             auto it = classesCache.find(className);
             if (it == classesCache.end()) {
-                ClassDescription cls = {};
+                BinClassDescription cls = {};
                 ret << cls;
                 desc = &ret.last();
                 classesCache[className] = desc;
@@ -1947,11 +1952,11 @@ QList<ClassDescription> CutterCore::getAllClassesFromFlags()
         match = methodFlagRegExp.match(flagName);
         if (match.hasMatch()) {
             QString className = match.captured(1);
-            ClassDescription *classDesc = nullptr;
+            BinClassDescription *classDesc = nullptr;
             auto it = classesCache.find(className);
             if (it == classesCache.end()) {
                 // add a new stub class, will be replaced if class flag comes after it
-                ClassDescription cls;
+                BinClassDescription cls;
                 cls.name = tr("Unknown (%1)").arg(className);
                 cls.addr = RVA_INVALID;
                 cls.index = 0;
@@ -1972,43 +1977,23 @@ QList<ClassDescription> CutterCore::getAllClassesFromFlags()
     return ret;
 }
 
-QList<ClassDescription> CutterCore::getAllClassesFromAnal()
+QList<QString> CutterCore::getAllClassesFromAnal()
 {
-    bool ok;
-    QList<ClassDescription> ret;
+    QList<QString> ret;
 
-    QJsonArray classesArray = cmdj("aClj").array();
-    for (QJsonValueRef value : classesArray) {
-        QJsonObject classObject = value.toObject();
-
-        ClassDescription cls;
-        cls.name = classObject["name"].toString();
-        cls.addr = classObject["addr"].toVariant().toULongLong(&ok);
-        cls.addr = JsonValueGetRVA(classObject["addr"]);
-        cls.index = 0;
-        cls.vtableAddr = JsonValueGetRVA(classObject["vtable_addr"]);
-
-        for (QJsonValueRef value2 : classObject["bases"].toArray()) {
-            QJsonObject baseObject = value2.toObject();
-
-            ClassBaseClassDescription base;
-            base.name = baseObject["name"].toString();
-            base.offset = JsonValueGetRVA(baseObject["offset"], 0);
-            cls.baseClasses << base;
-        }
-
-        for (QJsonValueRef value2 : classObject["methods"].toArray()) {
-            QJsonObject methObject = value2.toObject();
-
-            ClassMethodDescription meth;
-            meth.name = methObject["name"].toString();
-            meth.addr = JsonValueGetRVA(methObject["addr"]);
-            meth.vtableIndex = methObject["vtable_index"].toInt(-1);
-            cls.methods << meth;
-        }
-
-        ret << cls;
+    SdbList *l = r_anal_class_get_all(core_->anal, true);
+    if (!l) {
+        return ret;
     }
+
+    SdbListIter *it;
+    void *entry;
+    ls_foreach(l, it, entry) {
+        auto kv = reinterpret_cast<SdbKv *>(entry);
+        ret.append(QString::fromUtf8(reinterpret_cast<const char *>(kv->base.key)));
+    }
+    ls_free(l);
+
     return ret;
 }
 
